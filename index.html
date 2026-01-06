@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocal Agent AI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background-color: #f4f6f9; height: 100vh; display: flex; flex-direction: column; }
+        .chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth; }
+        .message { max-width: 80%; padding: 15px; border-radius: 15px; position: relative; animation: fadeIn 0.3s ease; }
+        .message.user { align-self: flex-end; background-color: #007bff; color: white; border-bottom-right-radius: 2px; }
+        .message.agent { align-self: flex-start; background-color: white; border: 1px solid #dee2e6; border-bottom-left-radius: 2px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .controls-area { background: white; padding: 20px; border-top: 1px solid #dee2e6; }
+        .recording-pulse { animation: pulse 1.5s infinite; background-color: #dc3545 !important; border-color: #dc3545 !important; }
+        .audio-player { width: 100%; margin-top: 10px; height: 32px; }
+        .analysis-box { font-size: 0.85em; background: #f8f9fa; padding: 10px; border-radius: 8px; margin-top: 10px; border-left: 3px solid #17a2b8; color: #333; }
+        .suggestion-box { font-size: 0.85em; background: #fff3cd; padding: 10px; border-radius: 8px; margin-top: 5px; border-left: 3px solid #ffc107; color: #856404; }
+        .transcription-box { font-style: italic; color: #eee; font-size: 0.9em; margin-top: 10px; }
+        .metric-badge { font-size: 0.75em; padding: 5px 10px; border-radius: 12px; background: #e9ecef; color: #495057; display: inline-block; margin-right: 5px; margin-bottom: 5px; }
+        
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+        #visualizer { width: 100%; height: 60px; background-color: #f8f9fa; border-radius: 8px; margin-bottom: 15px; display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#"><i class="fas fa-microphone-alt me-2"></i><span id="brandText">Vocal Agent</span></a>
+            <div class="d-flex gap-2">
+                <select id="languageSelect" class="form-select form-select-sm" style="width: 120px;">
+                    <option value="en" selected>English</option>
+                    <option value="hi">Hindi</option>
+                    <option value="te">Telugu</option>
+                </select>
+                <select id="voiceSelect" class="form-select form-select-sm" style="width: 150px;"></select>
+                <select id="styleSelect" class="form-select form-select-sm" style="width: 120px;"></select>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Chat History -->
+    <div id="chatHistory" class="chat-container">
+        <div class="text-center text-muted mt-5" id="emptyState">
+            <i class="fas fa-wave-square fa-3x mb-3"></i>
+            <p id="emptyStateText">Start speaking or upload audio to begin therapy session.</p>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-area">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8 mx-auto">
+                    <canvas id="visualizer"></canvas>
+                    <div class="input-group">
+                        <button id="recordBtn" class="btn btn-primary btn-lg rounded-circle me-3" style="width: 60px; height: 60px;">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        
+                        <div class="flex-grow-1 border rounded p-2 d-flex align-items-center bg-light">
+                            <input type="file" id="audioUpload" accept="audio/*" class="form-control" style="display: none;">
+                            <button class="btn btn-outline-secondary me-2" onclick="document.getElementById('audioUpload').click()">
+                                <i class="fas fa-paperclip"></i> <span id="uploadText">Upload</span>
+                            </button>
+                            <span id="statusText" class="text-muted ms-2">Ready</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Translations
+        const translations = {
+            en: {
+                brand: "Vocal Agent",
+                empty_state: "Start speaking or upload audio to begin therapy session.",
+                upload_btn: "Upload",
+                status_ready: "Ready",
+                status_recording: "Recording...",
+                status_finalizing: "Finalizing...",
+                status_processing: "Processing...",
+                status_error: "Error",
+                status_conn_error: "Connection Error",
+                you: "You",
+                you_said: "You said",
+                agent_name: "Vocal Agent",
+                corrected_speech: "Corrected Speech",
+                words: "Words",
+                disfluencies: "Disfluencies",
+                rate: "Rate",
+                analysis_tab: "Analysis",
+                tips_tab: "Therapy Tips",
+                no_analysis: "No analysis provided.",
+                no_suggestions: "No suggestions provided.",
+                thinking: "Thinking...",
+                msg_audio_recording: "🎤 Audio Recording",
+                msg_uploaded: "📁 Uploaded",
+                soap_note: "Clinical SOAP Note",
+                level: "Level",
+                label_original: "Original Input",
+                label_fluent: "Fluent Output"
+            },
+            hi: {
+                brand: "वोकल एजेंट",
+                empty_state: "थेरेपी सत्र शुरू करने के लिए बोलें या ऑडियो अपलोड करें।",
+                upload_btn: "अपलोड",
+                status_ready: "तैयार",
+                status_recording: "रिकॉर्डिंग...",
+                status_finalizing: "अंतिम रूप दे रहा है...",
+                status_processing: "प्रोसेसिंग...",
+                status_error: "त्रुटि",
+                status_conn_error: "कनेक्शन त्रुटि",
+                you: "आप",
+                you_said: "आपने कहा",
+                agent_name: "वोकल एजेंट",
+                corrected_speech: "सुधारा गया भाषण",
+                words: "शब्द",
+                disfluencies: "रुकावटें",
+                rate: "गति",
+                analysis_tab: "विश्लेषण",
+                tips_tab: "सुझाव",
+                no_analysis: "कोई विश्लेषण नहीं।",
+                no_suggestions: "कोई सुझाव नहीं।",
+                thinking: "सोच रहा हूँ...",
+                msg_audio_recording: "🎤 ऑडियो रिकॉर्डिंग",
+                msg_uploaded: "📁 अपलोड किया गया",
+                soap_note: "नैदानिक SOAP नोट",
+                level: "स्तर",
+                label_original: "मूल इनपुट",
+                label_fluent: "धाराप्रवाह आउटपुट"
+            },
+            te: {
+                brand: "వోకల్ ఏజెంట్",
+                empty_state: "థెరపీ సెషన్ ప్రారంభించడానికి మాట్లాడండి లేదా ఆడియో అప్‌లోడ్ చేయండి.",
+                upload_btn: "అప్‌లోడ్",
+                status_ready: "సిద్ధంగా ఉంది",
+                status_recording: "రికార్డింగ్...",
+                status_finalizing: "పూర్తి చేస్తోంది...",
+                status_processing: "ప్రాసెస్ చేస్తోంది...",
+                status_error: "లోపం",
+                status_conn_error: "కనెక్షన్ లోపం",
+                you: "మీరు",
+                you_said: "మీరు చెప్పారు",
+                agent_name: "వోకల్ ఏజెంట్",
+                corrected_speech: "సవరించిన ప్రసంగం",
+                words: "పదాలు",
+                disfluencies: "అవరోధాలు",
+                rate: "రేటు",
+                analysis_tab: "విశ్లేషణ",
+                tips_tab: "చిట్కాలు",
+                no_analysis: "విశ్లేషణ లేదు.",
+                no_suggestions: "సూచనలు లేవు.",
+                thinking: "ఆలోచిస్తోంది...",
+                msg_audio_recording: "🎤 ఆడియో రికార్డింగ్",
+                msg_uploaded: "📁 అప్‌లోడ్ చేయబడింది",
+                soap_note: "క్లినికల్ SOAP నోట్",
+                level: "స్థాయి",
+                label_original: "అసలు ఇన్‌పుట్",
+                label_fluent: "ఫ్లూయెంట్ అవుట్‌పుట్"
+            }
+        };
+
+        function getT(key) {
+            const lang = document.getElementById('languageSelect').value;
+            return translations[lang]?.[key] || translations['en'][key];
+        }
+
+        let currentStatusKey = 'status_ready';
+        function setStatus(key) {
+            currentStatusKey = key;
+            statusText.innerText = getT(key);
+        }
+
+        function updateStaticUI() {
+            document.getElementById('brandText').innerText = getT('brand');
+            document.getElementById('emptyStateText').innerText = getT('empty_state');
+            document.getElementById('uploadText').innerText = getT('upload_btn');
+            setStatus(currentStatusKey);
+        }
+
+        document.getElementById('languageSelect').addEventListener('change', updateStaticUI);
+
+        // Configuration
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+        let isAgentSpeaking = false;
+
+        // DOM Elements
+        const chatHistory = document.getElementById('chatHistory');
+        const recordBtn = document.getElementById('recordBtn');
+        const statusText = document.getElementById('statusText');
+        const emptyState = document.getElementById('emptyState');
+        const audioUpload = document.getElementById('audioUpload');
+
+        // Initialize Options
+        async function loadOptions() {
+            try {
+                const response = await fetch('/options');
+                const data = await response.json();
+                
+                const voiceSelect = document.getElementById('voiceSelect');
+                data.voices.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v.id;
+                    opt.text = v.name;
+                    if(v.id === 'af_heart') opt.selected = true;
+                    voiceSelect.appendChild(opt);
+                });
+
+                const styleSelect = document.getElementById('styleSelect');
+                data.styles.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s;
+                    opt.text = s;
+                    styleSelect.appendChild(opt);
+                });
+            } catch (e) {
+                console.error("Failed to load options", e);
+            }
+        }
+        loadOptions();
+
+        // --- UI Functions ---
+
+        function appendUserMessage(text, audioBlob = null, transcription = null) {
+            if(emptyState) emptyState.style.display = 'none';
+            
+            const div = document.createElement('div');
+            const messageId = `user-msg-${Date.now()}`;
+            div.id = messageId;
+            div.className = 'message user';
+            
+            let content = `<div class="mb-1"><strong>${getT('you')}</strong></div>`;
+            if (text) content += `<div>${text}</div>`;
+            
+            if (audioBlob) {
+                const url = URL.createObjectURL(audioBlob);
+                content += `<div class="small text-white-50 mt-2">${getT('label_original')}</div><audio controls src="${url}" class="audio-player"></audio>`;
+            }
+
+            if (transcription) {
+                content += `<div class="transcription-box">${getT('you_said')}: "${transcription}"</div>`;
+            }
+            
+            div.innerHTML = content;
+            chatHistory.appendChild(div);
+            scrollToBottom();
+            return messageId;
+        }
+
+        function updateUserMessageWithTranscription(messageId, transcription) {
+            const messageDiv = document.getElementById(messageId);
+            if (messageDiv && transcription) {
+                const tBox = document.createElement('div');
+                tBox.className = 'transcription-box';
+                tBox.innerText = `${getT('you_said')}: "${transcription}"`;
+                messageDiv.appendChild(tBox);
+            }
+        }
+
+        function appendAgentMessage(data) {
+            const div = document.createElement('div');
+            div.className = 'message agent';
+            
+            let content = `<div class="mb-1 text-primary"><strong><i class="fas fa-robot me-1"></i>${getT('agent_name')}</strong></div>`;
+            
+            // Difficulty Level Badge
+            if (data.response.level) {
+                let badgeClass = 'bg-info';
+                if (data.response.level === 'Beginner') badgeClass = 'bg-success';
+                if (data.response.level === 'Advanced') badgeClass = 'bg-warning text-dark';
+                
+                content += `<div class="mb-2">
+                    <span class="badge ${badgeClass}">${getT('level')}: ${data.response.level}</span>
+                </div>`;
+            }
+
+            // Corrected Text
+            content += `<h6>${getT('corrected_speech')}</h6><div class="fs-5 mb-3">${data.response.text}</div>`;
+            
+            // Audio
+            if (data.response.audio_url) {
+                // Add ID to control playback for barge-in
+                const audioId = `agent-audio-${Date.now()}`;
+                content += `<div class="small text-muted mt-2">${getT('label_fluent')}</div><audio id="${audioId}" controls autoplay src="${data.response.audio_url}" class="audio-player"></audio>`;
+                
+                // Track playback state
+                setTimeout(() => {
+                    const audioEl = document.getElementById(audioId);
+                    if(audioEl) {
+                        audioEl.onplay = () => { isAgentSpeaking = true; };
+                        audioEl.onended = () => { isAgentSpeaking = false; };
+                        audioEl.onpause = () => { isAgentSpeaking = false; };
+                        currentAgentAudio = audioEl;
+                    }
+                }, 100);
+            }
+
+            // Metrics Dashboard
+            if (data.response.metrics) {
+                content += `<div class="mt-2">
+                    <span class="metric-badge"><i class="fas fa-font"></i> ${getT('words')}: ${data.response.metrics.words}</span>
+                    <span class="metric-badge"><i class="fas fa-exclamation-circle"></i> ${getT('disfluencies')}: ${data.response.metrics.disfluencies}</span>
+                    <span class="metric-badge"><i class="fas fa-chart-line"></i> ${getT('rate')}: ${data.response.metrics.rate}%</span>
+                </div>`;
+            }
+
+            // Analysis and Suggestions in a tabbed view
+            content += `
+                <div class="mt-3">
+                    <ul class="nav nav-tabs nav-fill" id="myTab" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis-${data.response.audio_url}" type="button" role="tab">${getT('analysis_tab')}</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tips-tab" data-bs-toggle="tab" data-bs-target="#tips-${data.response.audio_url}" type="button" role="tab">${getT('tips_tab')}</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="soap-tab" data-bs-toggle="tab" data-bs-target="#soap-${data.response.audio_url}" type="button" role="tab">SOAP</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content border border-top-0 p-3 rounded-bottom">
+                        <div class="tab-pane fade show active" id="analysis-${data.response.audio_url}" role="tabpanel">
+                            <div class="analysis-box border-0 m-0 p-0 bg-transparent">
+                                ${data.response.analysis || getT('no_analysis')}
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="tips-${data.response.audio_url}" role="tabpanel">
+                            <div class="suggestion-box border-0 m-0 p-0 bg-transparent">
+                                ${data.response.suggestions || getT('no_suggestions')}
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="soap-${data.response.audio_url}" role="tabpanel">
+                            <div class="analysis-box border-0 m-0 p-0 bg-transparent">
+                                ${data.response.soap ? `
+                                    <strong>S:</strong> ${data.response.soap.s}<br>
+                                    <strong>O:</strong> ${data.response.soap.o}<br>
+                                    <strong>A:</strong> ${data.response.soap.a}<br>
+                                    <strong>P:</strong> ${data.response.soap.p}
+                                ` : getT('no_analysis')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            div.innerHTML = content;
+            chatHistory.appendChild(div);
+            scrollToBottom();
+        }
+
+        function appendLoading() {
+            const div = document.createElement('div');
+            div.id = 'loadingMessage';
+            div.className = 'message agent';
+            div.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                    <span>${getT('thinking')}</span>
+                </div>`;
+            chatHistory.appendChild(div);
+            scrollToBottom();
+        }
+
+        function removeLoading() {
+            const loading = document.getElementById('loadingMessage');
+            if(loading) loading.remove();
+        }
+
+        function scrollToBottom() {
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        // --- Logic ---
+
+        async function processAudio(blob, userMessageId) {
+            appendLoading();
+            setStatus('status_processing');
+            
+            const formData = new FormData();
+            formData.append('file', blob, 'recording.webm');
+            formData.append('voice', document.getElementById('voiceSelect').value);
+            formData.append('style', document.getElementById('styleSelect').value);
+            formData.append('speed', 1.2);
+            formData.append('language', document.getElementById('languageSelect').value);
+
+            try {
+                const res = await fetch('/api/process', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await res.json();
+                removeLoading();
+                
+                if (data.status === 'success') {
+                    if (userMessageId) updateUserMessageWithTranscription(userMessageId, data.transcription);
+                    appendAgentMessage(data);
+                    setStatus('status_ready');
+                } else {
+                    alert("Error: " + data.message);
+                    setStatus('status_error');
+                }
+            } catch (e) {
+                removeLoading();
+                console.error(e);
+                setStatus('status_conn_error');
+            }
+        }
+
+        // --- Visualizer ---
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let canvasContext;
+        let animationId;
+        let mediaStream;
+        let currentAgentAudio = null;
+        let vadCounter = 0;
+        const VAD_THRESHOLD = 30; // Sensitivity for barge-in
+
+        function initAudioContext(stream) {
+            if (audioContext) return; // Already initialized
+            
+            const canvas = document.getElementById('visualizer');
+            canvas.style.display = 'block';
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            canvasContext = canvas.getContext('2d');
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+
+            draw();
+        }
+
+        function checkBargeIn(averageVolume) {
+            // If agent is speaking and user makes noise
+            if (isAgentSpeaking && averageVolume > VAD_THRESHOLD) {
+                vadCounter++;
+                // Require consecutive frames of noise to avoid glitches (approx 100ms)
+                if (vadCounter > 5) {
+                    console.log("Barge-in detected! Stopping agent.");
+                    if (currentAgentAudio) {
+                        currentAgentAudio.pause();
+                        currentAgentAudio.currentTime = 0;
+                        isAgentSpeaking = false;
+                    }
+                    // Optional: Auto-start recording if not already
+                    if (!isRecording) {
+                        recordBtn.click();
+                    }
+                    vadCounter = 0;
+                }
+            } else {
+                vadCounter = 0;
+            }
+        }
+
+        function draw() {
+            function draw() {
+                animationId = requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+                canvasContext.fillStyle = '#f8f9fa';
+                canvasContext.fillRect(0, 0, canvas.width, canvas.height);
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let barHeight;
+                let x = 0;
+                let sum = 0;
+                
+                for(let i = 0; i < bufferLength; i++) {
+                    barHeight = dataArray[i] / 2;
+                    sum += dataArray[i];
+                    canvasContext.fillStyle = `rgb(50, 50, ${barHeight + 100})`;
+                    canvasContext.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                    x += barWidth + 1;
+                }
+                
+                // VAD Check
+                const average = sum / bufferLength;
+                checkBargeIn(average);
+            }
+            draw();
+        }
+
+        // Removed stopVisualizer to keep VAD active
+        // function stopVisualizer() { ... }
+
+        // --- Recording Handlers ---
+
+        recordBtn.addEventListener('click', async () => {
+            if (!isRecording) {
+                // Start Recording
+                try {
+                    if (!mediaStream) {
+                        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    }
+                    
+                    // Initialize VAD/Visualizer if not already running
+                    initAudioContext(mediaStream);
+
+                    // Optimize for speed: Use lower bitrate and efficient codec
+                    const options = { mimeType: 'audio/webm;codecs=opus', bitsPerSecond: 32000 };
+                    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        delete options.mimeType; // Fallback to default
+                    }
+                    mediaRecorder = new MediaRecorder(mediaStream, options);
+                    audioChunks = [];
+                    // startVisualizer(stream); // Now handled by initAudioContext
+
+                    mediaRecorder.ondataavailable = (event) => {
+                        audioChunks.push(event.data);
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const userMessageId = appendUserMessage(getT('msg_audio_recording'), audioBlob);
+                        // stopVisualizer(); // Keep visualizer running for VAD
+                        processAudio(audioBlob, userMessageId);
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordBtn.innerHTML = '<i class="fas fa-stop"></i>';
+                    recordBtn.classList.add('recording-pulse');
+                    setStatus('status_recording');
+                } catch (err) {
+                    console.error("Error accessing microphone:", err);
+                    alert("Could not access microphone.");
+                }
+            } else {
+                // Stop Recording
+                mediaRecorder.stop();
+                isRecording = false;
+                recordBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                recordBtn.classList.remove('recording-pulse');
+                setStatus('status_finalizing');
+            }
+        });
+
+        // --- File Upload Handler ---
+        
+        audioUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const userMessageId = appendUserMessage(`${getT('msg_uploaded')}: ${file.name}`);
+                setStatus('status_processing');
+                processAudio(file, userMessageId);
+                audioUpload.value = ''; // Reset
+            }
+        });
+
+    </script>
+    <!-- Add Bootstrap JS for Tabs -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
