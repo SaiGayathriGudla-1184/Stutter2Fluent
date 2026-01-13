@@ -1,20 +1,9 @@
-# Python
 __pycache__/
 *.py[cod]
+*$py.class
 venv/
-.venv/
-
-# Models & Large Files
-models/
-whisper-finetuned-stutter*/
-*.onnx
-*.bin
-
-# Application Data
-generated_audios/
-uploads/
-test_data/
-
-# Logs & OS
-*.log
+.env
+service-account-key.json
 .DS_Store
+*.log
+.vscode/

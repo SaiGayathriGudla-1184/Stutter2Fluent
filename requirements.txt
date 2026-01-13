@@ -1,39 +1,17 @@
-# Core AI & Agent
-agno==1.2.6
-ollama
-
-# Speech Recognition
-faster-whisper
-torch
-
-# Text to Speech
-kokoro-onnx==0.4.7
-edge-tts
-misaki[en]
-phonemizer-fork==3.3.1
-espeakng-loader>=0.2.4
-sounddevice>=0.5.1
-soundfile>=0.13.0
-
-# Web Framework
-fastapi
-uvicorn
-python-multipart
-websockets
-jinja2
-
-# Data & Math
+pandas
 numpy
-scipy
-
-# Tools & Utilities
-PyYAML
+google-generativeai
+google-cloud-storage
+google-cloud-bigquery
+python-dotenv
+deep-translator
+langdetect
+flask
+flask-cors
+firebase-admin
 googlesearch-python
-pycountry
-wikipedia
-arxiv
-pypdf==5.4.0
-num2words
-spacy
-colorlog>=6.9.0
-onnxruntime>=1.20.1
+qdrant-client>=1.9.0
+grpcio
+beautifulsoup4
+requests
+gunicorn
